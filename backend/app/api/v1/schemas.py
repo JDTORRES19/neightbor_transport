@@ -1,0 +1,139 @@
+from typing import Any, Literal
+
+from pydantic import BaseModel, Field
+
+
+class HealthData(BaseModel):
+    status: str
+    service: str
+
+
+class HealthSuccessEnvelope(BaseModel):
+    ok: Literal[True] = True
+    data: HealthData
+
+
+class ApiErrorPayload(BaseModel):
+    code: str
+    message: str
+    details: dict[str, Any] = Field(default_factory=dict)
+    request_id: str | None = None
+
+
+class ApiErrorEnvelope(BaseModel):
+    ok: Literal[False] = False
+    error: ApiErrorPayload
+
+
+class ProfileData(BaseModel):
+    user_id: int
+    display_name: str
+    photo_url: str | None = None
+    country_code: str
+    phone_prefix: str
+    phone_number: str
+    phone_e164: str
+
+
+class ProfileEnvelope(BaseModel):
+    ok: Literal[True] = True
+    data: ProfileData
+
+
+class ProfileUpdateRequest(BaseModel):
+    display_name: str | None = Field(default=None, min_length=2, max_length=120)
+    photo_url: str | None = Field(default=None, max_length=400)
+    country_code: str | None = Field(default=None, min_length=2, max_length=8)
+    phone_prefix: str | None = Field(default=None, min_length=2, max_length=8)
+    phone_number: str | None = Field(default=None, min_length=6, max_length=32)
+
+
+class VehicleData(BaseModel):
+    id: int
+    brand: str
+    reference: str
+    color: str
+    plate: str
+    is_active: bool
+
+
+class VehiclesListData(BaseModel):
+    items: list[VehicleData]
+
+
+class VehicleEnvelope(BaseModel):
+    ok: Literal[True] = True
+    data: VehicleData
+
+
+class VehiclesListEnvelope(BaseModel):
+    ok: Literal[True] = True
+    data: VehiclesListData
+
+
+class VehicleCreateRequest(BaseModel):
+    brand: str = Field(min_length=1, max_length=100)
+    reference: str = Field(min_length=1, max_length=120)
+    color: str = Field(min_length=1, max_length=60)
+    plate: str = Field(min_length=5, max_length=12)
+
+
+class VehicleUpdateRequest(BaseModel):
+    brand: str | None = Field(default=None, min_length=1, max_length=100)
+    reference: str | None = Field(default=None, min_length=1, max_length=120)
+    color: str | None = Field(default=None, min_length=1, max_length=60)
+    plate: str | None = Field(default=None, min_length=5, max_length=12)
+
+
+class TripDriverData(BaseModel):
+    user_id: int
+    display_name: str
+    photo_url: str | None = None
+
+
+class TripVehicleData(BaseModel):
+    id: int
+    brand: str
+    reference: str
+    color: str
+    plate: str
+
+
+class TripData(BaseModel):
+    id: int
+    direction: str
+    origin_label: str
+    departure_at: str
+    published_at: str
+    status: str
+    total_seats: int
+    available_seats: int
+    driver: TripDriverData
+    vehicle: TripVehicleData
+
+
+class TripEnvelope(BaseModel):
+    ok: Literal[True] = True
+    data: TripData
+
+
+class TripsListData(BaseModel):
+    items: list[TripData]
+
+
+class TripsListEnvelope(BaseModel):
+    ok: Literal[True] = True
+    data: TripsListData
+
+
+class TripMaybeEnvelope(BaseModel):
+    ok: Literal[True] = True
+    data: TripData | None
+
+
+class TripCreateRequest(BaseModel):
+    direction: str = Field(min_length=3, max_length=20)
+    origin_label: str = Field(min_length=3, max_length=160)
+    departure_at: str = Field(min_length=8, max_length=64)
+    total_seats: int = Field(ge=1, le=12)
+    vehicle_id: int = Field(ge=1)

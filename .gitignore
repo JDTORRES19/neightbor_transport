@@ -1,2 +1,23 @@
 .env
 *.pyc
+
+# Python
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+*.pyo
+
+# Node / frontend
+node_modules/
+frontend/node_modules/
+frontend/dist/
+
+# Coverage
+.coverage
+coverage.xml
+htmlcov/
+
+# Local recovery artifacts
+.recovery_backups/

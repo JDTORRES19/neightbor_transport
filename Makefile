@@ -1,27 +1,29 @@
 DC := docker-compose
 WEB := web
+FRONTEND := frontend
 HOST_UID := $(shell id -u)
 HOST_GID := $(shell id -g)
 
-.PHONY: help build up down restart ps logs web-logs db-logs shell migrate makemigrations createsuperuser collectstatic startapp fix-perms
+.PHONY: help build up down restart ps logs web-logs frontend-logs db-logs backend-shell frontend-shell api-health api-test openapi-export frontend-build fix-perms
 
 help:
 	@echo "Targets disponibles:"
-	@echo "  make build                 -> Construye las imagenes"
-	@echo "  make up                    -> Levanta servicios en background"
-	@echo "  make down                  -> Baja servicios (sin borrar volumenes)"
-	@echo "  make restart               -> Reinicia servicios"
+	@echo "  make build                 -> Construye imagen backend"
+	@echo "  make up                    -> Levanta db, backend y frontend"
+	@echo "  make down                  -> Baja servicios sin borrar volumenes"
+	@echo "  make restart               -> Reinicia todos los servicios"
 	@echo "  make ps                    -> Estado de contenedores"
 	@echo "  make logs                  -> Logs de todos los servicios"
-	@echo "  make web-logs              -> Logs del servicio web"
-	@echo "  make db-logs               -> Logs del servicio db"
-	@echo "  make shell                 -> Shell dentro de web"
-	@echo "  make migrate               -> Ejecuta migraciones"
-	@echo "  make makemigrations        -> Crea migraciones"
-	@echo "  make createsuperuser       -> Crea superusuario"
-	@echo "  make collectstatic         -> Ejecuta collectstatic"
-	@echo "  make startapp name=miapp   -> Crea una app Django"
-	@echo "  make fix-perms             -> Repara permisos root en /app"
+	@echo "  make web-logs              -> Logs del backend (web)"
+	@echo "  make frontend-logs         -> Logs del frontend"
+	@echo "  make db-logs               -> Logs de la base de datos"
+	@echo "  make backend-shell         -> Shell dentro del backend"
+	@echo "  make frontend-shell        -> Shell dentro del frontend"
+	@echo "  make api-health            -> Verifica endpoint de salud API"
+	@echo "  make api-test              -> Ejecuta pruebas backend (pytest)"
+	@echo "  make openapi-export        -> Exporta OpenAPI a contracts/openapi/openapi-v1.json"
+	@echo "  make frontend-build        -> Compila frontend"
+	@echo "  make fix-perms             -> Repara permisos root en backend/frontend"
 
 build:
 	$(DC) build
@@ -43,29 +45,34 @@ logs:
 	$(DC) logs -f
 
 web-logs:
-	$(DC) logs -f web
+	$(DC) logs -f $(WEB)
+
+frontend-logs:
+	$(DC) logs -f $(FRONTEND)
 
 db-logs:
 	$(DC) logs -f db
 
-shell:
+backend-shell:
 	$(DC) exec $(WEB) sh
 
-migrate:
-	$(DC) exec $(WEB) python manage.py migrate
+frontend-shell:
+	$(DC) exec $(FRONTEND) sh
 
-makemigrations:
-	$(DC) exec $(WEB) python manage.py makemigrations
+api-health:
+	$(DC) exec $(WEB) python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:8000/api/v1/health').read().decode())"
 
-createsuperuser:
-	$(DC) exec $(WEB) python manage.py createsuperuser
+api-test:
+	$(DC) exec $(WEB) python -m pytest -q
 
-collectstatic:
-	$(DC) exec $(WEB) python manage.py collectstatic --noinput
+openapi-export:
+	@mkdir -p contracts/openapi
+	$(DC) exec -T $(WEB) python -c "import json, urllib.request; d=json.loads(urllib.request.urlopen('http://localhost:8000/openapi.json').read().decode()); print(json.dumps(d, indent=2, sort_keys=True))" > contracts/openapi/openapi-v1.json
+	@echo "Contrato OpenAPI exportado en contracts/openapi/openapi-v1.json"
 
-startapp:
-	@if [ -z "$(name)" ]; then echo "Uso: make startapp name=miapp"; exit 1; fi
-	$(DC) exec $(WEB) python manage.py startapp $(name)
+frontend-build:
+	$(DC) run --rm $(FRONTEND) npm run build
 
 fix-perms:
-	$(DC) exec --user root $(WEB) sh -c 'find /app -uid 0 -exec chown $(HOST_UID):$(HOST_GID) {} +'
+	$(DC) exec --user root $(WEB) sh -c 'chown -R $(HOST_UID):$(HOST_GID) /app'
+	$(DC) exec --user root $(FRONTEND) sh -c 'chown -R $(HOST_UID):$(HOST_GID) /app'
