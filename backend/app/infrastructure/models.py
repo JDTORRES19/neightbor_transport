@@ -49,3 +49,21 @@ class Trip(Base):
     )
     status: Mapped[str] = mapped_column(String(20), index=True, default="activo")
     total_seats: Mapped[int] = mapped_column(Integer)
+
+
+class TripRequest(Base):
+    __tablename__ = "trip_requests"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    trip_id: Mapped[int] = mapped_column(ForeignKey("trips.id"), index=True)
+    requester_user_id: Mapped[int] = mapped_column(Integer, index=True)
+    pickup_label: Mapped[str] = mapped_column(String(160))
+    requested_seats: Mapped[int] = mapped_column(Integer)
+    comment: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), index=True, default="pendiente")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        index=True,
+    )
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

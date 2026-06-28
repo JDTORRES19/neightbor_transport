@@ -7,7 +7,7 @@ from sqlalchemy import select
 
 from app.main import app
 from app.infrastructure.database import SessionLocal, init_db
-from app.infrastructure.models import Profile, Trip, Vehicle
+from app.infrastructure.models import Profile, Trip, TripRequest, Vehicle
 
 client = TestClient(app)
 SEEDED_VEHICLE_ID = 1
@@ -19,6 +19,7 @@ def reset_db_state() -> None:
 
     init_db()
     with SessionLocal() as db:
+        db.execute(delete(TripRequest))
         db.execute(delete(Trip))
         db.execute(delete(Vehicle))
         db.execute(delete(Profile))

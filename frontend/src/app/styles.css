@@ -168,3 +168,27 @@ code {
   gap: 0.75rem;
   flex-wrap: wrap;
 }
+
+.requests-panel {
+  margin-top: 1rem;
+  border-top: 1px solid rgba(36, 74, 133, 0.18);
+  padding-top: 1rem;
+}
+
+.request-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.75rem 0 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.request-list li {
+  border: 1px solid #dce6f3;
+  border-radius: 10px;
+  padding: 0.8rem;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}

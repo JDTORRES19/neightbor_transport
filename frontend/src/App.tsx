@@ -2,6 +2,13 @@ import { FormEvent, useEffect, useState } from "react";
 
 import { useProfileQuery } from "./features/profile/useProfileQuery";
 import { useUpdateProfileMutation } from "./features/profile/useUpdateProfileMutation";
+import {
+  useAcceptTripRequestMutation,
+  useCancelTripRequestMutation,
+  useCreateTripRequestMutation,
+  useRejectTripRequestMutation,
+} from "./features/requests/useRequestMutations";
+import { useMyRequestsQuery, useTripRequestsQuery } from "./features/requests/useRequestQueries";
 import { useHealthQuery } from "./features/system/health/useHealthQuery";
 import {
   useCreateVehicleMutation,
@@ -27,8 +34,14 @@ function App() {
   const createTripMutation = useCreateTripMutation();
   const cancelTripMutation = useCancelTripMutation();
   const finalizeTripMutation = useFinalizeTripMutation();
+  const createTripRequestMutation = useCreateTripRequestMutation();
+  const acceptTripRequestMutation = useAcceptTripRequestMutation();
+  const rejectTripRequestMutation = useRejectTripRequestMutation();
+  const cancelTripRequestMutation = useCancelTripRequestMutation();
   const tripsBoardQuery = useTripsBoardQuery();
   const myActiveTripQuery = useMyActiveTripQuery();
+  const tripRequestsQuery = useTripRequestsQuery(myActiveTripQuery.data?.data?.id);
+  const myRequestsQuery = useMyRequestsQuery();
 
   const [displayName, setDisplayName] = useState("Usuario Demo");
   const [phonePrefix, setPhonePrefix] = useState("+57");
@@ -42,6 +55,9 @@ function App() {
   const [tripOriginLabel, setTripOriginLabel] = useState("Unidad La Arboleda");
   const [tripDepartureAt, setTripDepartureAt] = useState("");
   const [tripTotalSeats, setTripTotalSeats] = useState(4);
+  const [requestPickupLabel, setRequestPickupLabel] = useState("Porteria principal");
+  const [requestRequestedSeats, setRequestRequestedSeats] = useState(1);
+  const [requestComment, setRequestComment] = useState("Voy con maleta");
   const [actionFeedback, setActionFeedback] = useState<string>("");
 
   useEffect(() => {
@@ -199,6 +215,81 @@ function App() {
     }
   };
 
+  const handleCreateRequestOnActiveTrip = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const activeTrip = myActiveTripQuery.data?.data;
+    if (!activeTrip) {
+      setActionFeedback("No hay viaje activo para crear solicitud de prueba.");
+      return;
+    }
+
+    setActionFeedback("");
+
+    try {
+      await createTripRequestMutation.mutateAsync({
+        tripId: activeTrip.id,
+        payload: {
+          pickup_label: requestPickupLabel,
+          requested_seats: requestRequestedSeats,
+          comment: requestComment,
+        },
+      });
+      setActionFeedback("Solicitud creada correctamente.");
+    } catch (mutationError) {
+      if (mutationError instanceof ApiRequestError) {
+        setActionFeedback(`${mutationError.code}: ${mutationError.message}`);
+        return;
+      }
+      setActionFeedback("No fue posible crear la solicitud.");
+    }
+  };
+
+  const handleAcceptRequest = async (requestId: number) => {
+    setActionFeedback("");
+    try {
+      await acceptTripRequestMutation.mutateAsync(requestId);
+      setActionFeedback("Solicitud aceptada.");
+    } catch (mutationError) {
+      if (mutationError instanceof ApiRequestError) {
+        setActionFeedback(`${mutationError.code}: ${mutationError.message}`);
+        return;
+      }
+      setActionFeedback("No fue posible aceptar la solicitud.");
+    }
+  };
+
+  const handleRejectRequest = async (requestId: number) => {
+    setActionFeedback("");
+    try {
+      await rejectTripRequestMutation.mutateAsync(requestId);
+      setActionFeedback("Solicitud rechazada.");
+    } catch (mutationError) {
+      if (mutationError instanceof ApiRequestError) {
+        setActionFeedback(`${mutationError.code}: ${mutationError.message}`);
+        return;
+      }
+      setActionFeedback("No fue posible rechazar la solicitud.");
+    }
+  };
+
+  const handleCancelOwnRequest = async (requestId: number) => {
+    setActionFeedback("");
+    try {
+      await cancelTripRequestMutation.mutateAsync(requestId);
+      setActionFeedback("Solicitud cancelada.");
+    } catch (mutationError) {
+      if (mutationError instanceof ApiRequestError) {
+        setActionFeedback(`${mutationError.code}: ${mutationError.message}`);
+        return;
+      }
+      setActionFeedback("No fue posible cancelar la solicitud.");
+    }
+  };
+
+  const tripRequests = tripRequestsQuery.data?.data.items ?? [];
+  const myRequests = myRequestsQuery.data?.data.items ?? [];
+
   return (
     <main className="app-shell">
       <section className="card">
@@ -347,6 +438,101 @@ function App() {
                 Finalizar viaje
               </button>
             </div>
+          </div>
+
+          <div className="requests-panel">
+            <p className="section-title">Solicitudes de mi viaje activo</p>
+            {!myActiveTrip && <p className="request-id">Activa un viaje para gestionar solicitudes.</p>}
+
+            {myActiveTrip && (
+              <ul className="request-list">
+                {tripRequests.length === 0 && <li>No hay solicitudes registradas.</li>}
+                {tripRequests.map((item) => (
+                  <li key={item.id}>
+                    <div>
+                      <strong>{item.requester.display_name}</strong>
+                      <p>
+                        {item.requested_seats} cupo(s) - {item.pickup_label} - estado: {item.status}
+                      </p>
+                      {item.comment && <p>Comentario: {item.comment}</p>}
+                    </div>
+
+                    <div className="inline-actions">
+                      <button
+                        type="button"
+                        disabled={item.status !== "pendiente" || acceptTripRequestMutation.isPending}
+                        onClick={() => void handleAcceptRequest(item.id)}
+                      >
+                        Aceptar
+                      </button>
+                      <button
+                        type="button"
+                        disabled={item.status !== "pendiente" || rejectTripRequestMutation.isPending}
+                        onClick={() => void handleRejectRequest(item.id)}
+                      >
+                        Rechazar
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <form className="form-grid" onSubmit={handleCreateRequestOnActiveTrip}>
+            <p className="section-title">Simular solicitud (lado solicitante)</p>
+            <label>
+              Punto de recogida
+              <input
+                value={requestPickupLabel}
+                onChange={(event) => setRequestPickupLabel(event.target.value)}
+                required
+              />
+            </label>
+            <label>
+              Cupos solicitados
+              <input
+                type="number"
+                min={1}
+                max={12}
+                value={requestRequestedSeats}
+                onChange={(event) => setRequestRequestedSeats(Number(event.target.value))}
+                required
+              />
+            </label>
+            <label>
+              Comentario
+              <input value={requestComment} onChange={(event) => setRequestComment(event.target.value)} />
+            </label>
+            <button type="submit" disabled={createTripRequestMutation.isPending || !myActiveTrip}>
+              Crear solicitud en viaje activo
+            </button>
+          </form>
+
+          <div className="requests-panel">
+            <p className="section-title">Mis solicitudes (simulacion solicitante)</p>
+            <ul className="request-list">
+              {myRequests.length === 0 && <li>No hay solicitudes creadas.</li>}
+              {myRequests.map((item) => (
+                <li key={item.id}>
+                  <div>
+                    <strong>Viaje #{item.trip_id}</strong>
+                    <p>
+                      {item.requested_seats} cupo(s) - {item.pickup_label} - estado: {item.status}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={
+                      !["pendiente", "aceptada"].includes(item.status) || cancelTripRequestMutation.isPending
+                    }
+                    onClick={() => void handleCancelOwnRequest(item.id)}
+                  >
+                    Cancelar
+                  </button>
+                </li>
+              ))}
+            </ul>
           </div>
 
           {actionFeedback && <p className="request-id">{actionFeedback}</p>}

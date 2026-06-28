@@ -137,3 +137,41 @@ class TripCreateRequest(BaseModel):
     departure_at: str = Field(min_length=8, max_length=64)
     total_seats: int = Field(ge=1, le=12)
     vehicle_id: int = Field(ge=1)
+
+
+class TripRequestCreateRequest(BaseModel):
+    pickup_label: str = Field(min_length=3, max_length=160)
+    requested_seats: int = Field(ge=1, le=12)
+    comment: str | None = Field(default=None, max_length=500)
+
+
+class TripRequestRequesterData(BaseModel):
+    user_id: int
+    display_name: str
+    photo_url: str | None = None
+
+
+class TripRequestData(BaseModel):
+    id: int
+    trip_id: int
+    pickup_label: str
+    requested_seats: int
+    comment: str | None = None
+    status: str
+    created_at: str
+    decided_at: str | None = None
+    requester: TripRequestRequesterData
+
+
+class TripRequestEnvelope(BaseModel):
+    ok: Literal[True] = True
+    data: TripRequestData
+
+
+class TripRequestsListData(BaseModel):
+    items: list[TripRequestData]
+
+
+class TripRequestsListEnvelope(BaseModel):
+    ok: Literal[True] = True
+    data: TripRequestsListData

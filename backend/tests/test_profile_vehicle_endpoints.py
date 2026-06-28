@@ -4,7 +4,7 @@ from sqlalchemy import delete
 
 from app.main import app
 from app.infrastructure.database import SessionLocal, init_db
-from app.infrastructure.models import Profile, Trip, Vehicle
+from app.infrastructure.models import Profile, Trip, TripRequest, Vehicle
 
 client = TestClient(app)
 
@@ -13,6 +13,7 @@ client = TestClient(app)
 def reset_db_state() -> None:
     init_db()
     with SessionLocal() as db:
+        db.execute(delete(TripRequest))
         db.execute(delete(Trip))
         db.execute(delete(Vehicle))
         db.execute(delete(Profile))
