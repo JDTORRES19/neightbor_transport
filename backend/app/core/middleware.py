@@ -1,9 +1,11 @@
 import uuid
+from time import perf_counter
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
 from app.core.request_context import set_request_id
+from app.core.telemetry import record_request_latency
 
 
 class RequestIdMiddleware(BaseHTTPMiddleware):
@@ -12,6 +14,15 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
         request.state.request_id = request_id
         set_request_id(request_id)
 
-        response = await call_next(request)
+        started = perf_counter()
+        try:
+            response = await call_next(request)
+        except Exception:
+            duration_ms = (perf_counter() - started) * 1000
+            record_request_latency(request.method, request.url.path, 500, duration_ms)
+            raise
+
+        duration_ms = (perf_counter() - started) * 1000
+        record_request_latency(request.method, request.url.path, response.status_code, duration_ms)
         response.headers["X-Request-ID"] = request_id
         return response

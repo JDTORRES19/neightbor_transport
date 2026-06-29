@@ -133,6 +133,31 @@ p {
   font-size: 0.9rem;
 }
 
+.toast-stack {
+  margin-top: 1rem;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.toast-card {
+  border: 1px solid #f7cf8a;
+  border-radius: 10px;
+  padding: 0.7rem;
+  background: #fff8eb;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.toast-card button {
+  background: #a36100;
+}
+
+.toast-card button:hover {
+  background: #7d4b00;
+}
+
 button {
   width: fit-content;
   border: 0;
@@ -173,6 +198,43 @@ code {
   margin-top: 1rem;
   border-top: 1px solid rgba(36, 74, 133, 0.18);
   padding-top: 1rem;
+}
+
+.metrics-panel {
+  margin-top: 1rem;
+  border: 1px dashed #b8cbe5;
+  border-radius: 10px;
+  padding: 0.8rem;
+  background: #f7fbff;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.latency-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.9rem;
+  color: #2c4265;
+}
+
+.latency-controls select {
+  border: 1px solid #bfd0e6;
+  border-radius: 8px;
+  padding: 0.2rem 0.45rem;
+  font: inherit;
+}
+
+.latency-list {
+  margin: 0.4rem 0 0;
+  padding-left: 1rem;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.latency-list li {
+  font-size: 0.9rem;
+  color: #2c4265;
 }
 
 .request-list {

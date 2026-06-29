@@ -7,6 +7,7 @@ async function invalidateTrips(queryClient: ReturnType<typeof useQueryClient>) {
   await Promise.all([
     queryClient.invalidateQueries({ queryKey: ["trips", "board"] }),
     queryClient.invalidateQueries({ queryKey: ["trips", "mine", "active"] }),
+    queryClient.invalidateQueries({ queryKey: ["notifications"] }),
   ]);
 }
 

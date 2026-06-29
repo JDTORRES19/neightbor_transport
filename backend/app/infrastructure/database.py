@@ -1,6 +1,7 @@
 from collections.abc import Iterator
 
 from sqlalchemy import create_engine
+from sqlalchemy import text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.settings import get_settings
@@ -17,6 +18,8 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expi
 
 def init_db() -> None:
     Base.metadata.create_all(bind=engine)
+    with engine.begin() as connection:
+        connection.execute(text("ALTER TABLE trip_requests ALTER COLUMN status TYPE VARCHAR(40)"))
 
 
 def get_db() -> Iterator[Session]:

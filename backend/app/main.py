@@ -1,3 +1,5 @@
+import asyncio
+from contextlib import suppress
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -16,6 +18,7 @@ from app.core.handlers import (
 from app.core.middleware import RequestIdMiddleware
 from app.core.settings import get_settings
 from app.infrastructure.database import init_db
+from app.services.scheduler_service import scheduler_loop
 
 
 settings = get_settings()
@@ -24,7 +27,19 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     init_db()
-    yield
+    scheduler_task = None
+    if settings.enable_scheduler:
+        scheduler_task = asyncio.create_task(
+            scheduler_loop(interval_seconds=settings.scheduler_interval_seconds)
+        )
+
+    try:
+        yield
+    finally:
+        if scheduler_task is not None:
+            scheduler_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await scheduler_task
 
 
 app = FastAPI(

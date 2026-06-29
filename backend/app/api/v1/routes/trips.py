@@ -16,8 +16,15 @@ from app.core.responses import success_response
 from app.core.utils import parse_iso_datetime_to_utc
 from app.infrastructure.database import get_db
 from app.infrastructure.models import Profile, Trip, Vehicle
+from app.services.notification_service import create_trip_finalized_notifications
+from app.services.audit_service import record_manual_trip_finalized_audit
 from app.services.profile_service import ensure_profile
-from app.services.trip_service import find_my_active_trip_query, find_trip_or_raise, trip_payload
+from app.services.trip_service import (
+    finalize_trip_and_close_requests,
+    find_my_active_trip_query,
+    find_trip_or_raise,
+    trip_payload,
+)
 from app.services.vehicle_service import find_vehicle_or_raise
 
 router = APIRouter()
@@ -179,8 +186,17 @@ def finalize_trip(trip_id: int, db: Session = Depends(get_db)):
             message="El viaje no esta activo para finalizar.",
         )
 
-    trip.status = TRIP_STATUS_FINALIZED
-    db.add(trip)
+    previous_state = trip.status
+    impacted_user_ids = finalize_trip_and_close_requests(db, trip)
+    create_trip_finalized_notifications(db, trip, impacted_user_ids)
+    record_manual_trip_finalized_audit(
+        db,
+        trip=trip,
+        previous_state=previous_state,
+        actor_user_id=DEFAULT_USER_ID,
+        impacted_requests_count=len(impacted_user_ids),
+    )
+
     db.commit()
     db.refresh(trip)
 

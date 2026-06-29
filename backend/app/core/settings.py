@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     db_host: str = "db"
     db_port: int = 5432
     cors_origins_raw: str = "http://localhost:5173,http://127.0.0.1:5173"
+    enable_scheduler: bool = True
+    scheduler_interval_seconds: int = 60
 
     def database_url(self) -> str:
         return (

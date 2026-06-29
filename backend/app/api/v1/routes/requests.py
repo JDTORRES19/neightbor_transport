@@ -20,7 +20,7 @@ from app.infrastructure.database import get_db
 from app.infrastructure.models import Profile, Trip, TripRequest
 from app.services.profile_service import ensure_profile_for_user
 from app.services.request_service import (
-    cancel_other_pending_requests,
+    accept_request_with_lock,
     ensure_requester_has_no_active_acceptance,
     find_request_or_raise,
     request_payload,
@@ -130,43 +130,7 @@ def create_trip_request(trip_id: int, payload: TripRequestCreateRequest, db: Ses
     responses={404: {"model": ApiErrorEnvelope}, 409: {"model": ApiErrorEnvelope}},
 )
 def accept_request(request_id: int, db: Session = Depends(get_db)):
-    trip_request = find_request_or_raise(db, request_id)
-    trip = find_trip_or_raise(db, trip_request.trip_id)
-
-    if trip_request.status != PENDING_REQUEST_STATUS:
-        raise DomainConflictException(
-            code="ERR_REQUEST_NOT_PENDING",
-            message="La solicitud no esta pendiente.",
-        )
-
-    if trip.status != TRIP_STATUS_ACTIVE:
-        raise DomainConflictException(
-            code="ERR_TRIP_NOT_ACCEPTING_REQUESTS",
-            message="El viaje no esta recibiendo solicitudes.",
-        )
-
-    ensure_requester_has_no_active_acceptance(db, trip_request.requester_user_id, exclude_request_id=trip_request.id)
-
-    available = trip_available_seats(db, trip)
-    if trip_request.requested_seats > available:
-        raise DomainConflictException(
-            code="ERR_TRIP_CAPACITY_EXCEEDED",
-            message="No hay cupos disponibles para aceptar la solicitud.",
-        )
-
-    now_utc = datetime.now(timezone.utc)
-    trip_request.status = ACCEPTED_REQUEST_STATUS
-    trip_request.decided_at = now_utc
-    db.add(trip_request)
-
-    cancel_other_pending_requests(
-        db,
-        requester_user_id=trip_request.requester_user_id,
-        exclude_request_id=trip_request.id,
-        decided_at=now_utc,
-    )
-
-    recompute_trip_status_by_capacity(db, trip)
+    trip_request = accept_request_with_lock(db, request_id)
 
     db.commit()
     db.refresh(trip_request)

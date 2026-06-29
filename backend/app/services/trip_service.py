@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import func, select
@@ -6,7 +7,10 @@ from sqlalchemy.orm import Session
 from app.core.constants import (
     ACCEPTED_REQUEST_STATUS,
     ACTIVE_TRIP_STATUSES,
+    CANCELLED_BY_FINALIZATION_REQUEST_STATUS,
     DEFAULT_USER_ID,
+    FINALIZED_REQUEST_STATUS,
+    PENDING_REQUEST_STATUS,
     TRIP_STATUS_ACTIVE,
     TRIP_STATUS_CANCELLED,
     TRIP_STATUS_FINALIZED,
@@ -90,3 +94,33 @@ def find_my_active_trip_query():
         .order_by(Trip.published_at.desc())
         .limit(1)
     )
+
+
+def finalize_trip_and_close_requests(
+    db: Session,
+    trip: Trip,
+    *,
+    now_utc: datetime | None = None,
+) -> set[int]:
+    now = now_utc or datetime.now(timezone.utc)
+    impacted_requests = db.scalars(
+        select(TripRequest).where(
+            TripRequest.trip_id == trip.id,
+            TripRequest.status.in_({PENDING_REQUEST_STATUS, ACCEPTED_REQUEST_STATUS}),
+        )
+    ).all()
+
+    requester_user_ids: set[int] = set()
+    for request_item in impacted_requests:
+        requester_user_ids.add(request_item.requester_user_id)
+        if request_item.status == PENDING_REQUEST_STATUS:
+            request_item.status = CANCELLED_BY_FINALIZATION_REQUEST_STATUS
+        else:
+            request_item.status = FINALIZED_REQUEST_STATUS
+
+        request_item.decided_at = now
+        db.add(request_item)
+
+    trip.status = TRIP_STATUS_FINALIZED
+    db.add(trip)
+    return requester_user_ids

@@ -175,3 +175,74 @@ class TripRequestsListData(BaseModel):
 class TripRequestsListEnvelope(BaseModel):
     ok: Literal[True] = True
     data: TripRequestsListData
+
+
+class NotificationData(BaseModel):
+    id: int
+    user_id: int
+    type: str
+    title: str
+    body: str
+    payload: dict[str, Any] = Field(default_factory=dict)
+    is_read: bool
+    read_at: str | None = None
+    created_at: str
+
+
+class NotificationsListData(BaseModel):
+    items: list[NotificationData]
+    unread_count: int
+
+
+class NotificationsListEnvelope(BaseModel):
+    ok: Literal[True] = True
+    data: NotificationsListData
+
+
+class NotificationEnvelope(BaseModel):
+    ok: Literal[True] = True
+    data: NotificationData
+
+
+class ReadAllNotificationsData(BaseModel):
+    updated_count: int
+
+
+class ReadAllNotificationsEnvelope(BaseModel):
+    ok: Literal[True] = True
+    data: ReadAllNotificationsData
+
+
+class SchedulerJobRunData(BaseModel):
+    id: int
+    job_name: str
+    status: str
+    processed_count: int
+    started_at: str
+    finished_at: str | None = None
+
+
+class EndpointLatencyData(BaseModel):
+    method: str
+    path: str
+    status_code: int
+    count: int
+    avg_ms: float
+    p95_ms: float
+    max_ms: float
+
+
+class MetricsOverviewData(BaseModel):
+    trips_by_status: dict[str, int] = Field(default_factory=dict)
+    requests_by_status: dict[str, int] = Field(default_factory=dict)
+    total_notifications: int
+    unread_notifications: int
+    total_audit_events: int
+    last_scheduler_run: SchedulerJobRunData | None = None
+    latency_window_seconds: int
+    endpoint_latency_ms: list[EndpointLatencyData] = Field(default_factory=list)
+
+
+class MetricsOverviewEnvelope(BaseModel):
+    ok: Literal[True] = True
+    data: MetricsOverviewData

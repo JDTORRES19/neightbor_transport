@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 
 import { useProfileQuery } from "./features/profile/useProfileQuery";
 import { useUpdateProfileMutation } from "./features/profile/useUpdateProfileMutation";
@@ -9,6 +9,11 @@ import {
   useRejectTripRequestMutation,
 } from "./features/requests/useRequestMutations";
 import { useMyRequestsQuery, useTripRequestsQuery } from "./features/requests/useRequestQueries";
+import {
+  useMarkAllNotificationsReadMutation,
+  useUnreadNotificationsQuery,
+} from "./features/notifications/useNotifications";
+import { useMetricsOverviewQuery } from "./features/metrics/useMetricsOverviewQuery";
 import { useHealthQuery } from "./features/system/health/useHealthQuery";
 import {
   useCreateVehicleMutation,
@@ -32,6 +37,7 @@ import {
 } from "./shared/constants/trips";
 import { API_BASE_URL } from "./shared/api/config";
 import { ApiRequestError } from "./shared/api/types";
+import { NotificationData } from "./features/notifications/types";
 
 function App() {
   const { data, error, isLoading, isError, refetch } = useHealthQuery();
@@ -52,6 +58,10 @@ function App() {
   const myActiveTripQuery = useMyActiveTripQuery();
   const tripRequestsQuery = useTripRequestsQuery(myActiveTripQuery.data?.data?.id);
   const myRequestsQuery = useMyRequestsQuery();
+  const unreadNotificationsQuery = useUnreadNotificationsQuery();
+  const markAllNotificationsReadMutation = useMarkAllNotificationsReadMutation();
+  const [latencyWindowSeconds, setLatencyWindowSeconds] = useState(300);
+  const metricsOverviewQuery = useMetricsOverviewQuery({ windowSeconds: latencyWindowSeconds, limit: 12 });
 
   const [displayName, setDisplayName] = useState("Usuario Demo");
   const [phonePrefix, setPhonePrefix] = useState("+57");
@@ -71,6 +81,8 @@ function App() {
   const [requestComment, setRequestComment] = useState("Voy con maleta");
   const [autoCancelledByAcceptIds, setAutoCancelledByAcceptIds] = useState<number[]>([]);
   const [actionFeedback, setActionFeedback] = useState<string>("");
+  const [toastNotifications, setToastNotifications] = useState<NotificationData[]>([]);
+  const seenToastIdsRef = useRef<Set<number>>(new Set());
 
   useEffect(() => {
     if (!profileQuery.data) {
@@ -81,6 +93,25 @@ function App() {
     setPhonePrefix(profileQuery.data.data.phone_prefix);
     setPhoneNumber(profileQuery.data.data.phone_number);
   }, [profileQuery.data]);
+
+  useEffect(() => {
+    const unreadItems = unreadNotificationsQuery.data?.data.items ?? [];
+    if (unreadItems.length === 0) {
+      return;
+    }
+
+    const newItems = unreadItems.filter((item) => !seenToastIdsRef.current.has(item.id));
+    if (newItems.length === 0) {
+      return;
+    }
+
+    newItems.forEach((item) => seenToastIdsRef.current.add(item.id));
+    setToastNotifications((current) => [...newItems, ...current].slice(0, 6));
+
+    void markAllNotificationsReadMutation.mutateAsync().catch(() => {
+      // Keep unread state if the mark-as-read call fails.
+    });
+  }, [unreadNotificationsQuery.dataUpdatedAt]);
 
   const healthStatus = isLoading ? "loading" : isError ? "error" : "ok";
   const requestId = data?.requestId ?? (error instanceof ApiRequestError ? error.requestId : "-") ?? "-";
@@ -347,6 +378,10 @@ function App() {
     }
   };
 
+  const handleDismissToast = (notificationId: number) => {
+    setToastNotifications((current) => current.filter((item) => item.id !== notificationId));
+  };
+
   return (
     <main className="app-shell">
       <section className="card">
@@ -369,13 +404,73 @@ function App() {
           </button>
         </div>
 
+        {toastNotifications.length > 0 && (
+          <div className="toast-stack" aria-live="polite">
+            {toastNotifications.map((item) => (
+              <article key={item.id} className="toast-card">
+                <div>
+                  <p className="section-title">{item.title}</p>
+                  <p>{item.body}</p>
+                  <p className="request-id">{new Date(item.created_at).toLocaleString()}</p>
+                </div>
+                <button type="button" onClick={() => handleDismissToast(item.id)}>
+                  Cerrar
+                </button>
+              </article>
+            ))}
+          </div>
+        )}
+
         <div className="status-panel secondary-panel">
           <p className="section-title">Bootstrap Fase 1</p>
           <p>
             Perfil: {profileQuery.data?.data.display_name ?? (profileQuery.isLoading ? "cargando..." : "sin datos")}
           </p>
+          <p>Notificaciones no leidas: {unreadNotificationsQuery.data?.data.unread_count ?? 0}</p>
           <p>Vehiculos registrados: {vehiclesQuery.data?.data.items.length ?? 0}</p>
           <p>Viajes activos en board: {tripsBoardQuery.data?.data.items.length ?? 0}</p>
+
+          <div className="metrics-panel">
+            <p className="section-title">Observabilidad Fase 6</p>
+            <label className="latency-controls">
+              Ventana latencia
+              <select
+                value={latencyWindowSeconds}
+                onChange={(event) => setLatencyWindowSeconds(Number(event.target.value))}
+              >
+                <option value={60}>1 min</option>
+                <option value={300}>5 min</option>
+                <option value={900}>15 min</option>
+              </select>
+            </label>
+            <p>Viajes por estado: {JSON.stringify(metricsOverviewQuery.data?.data.trips_by_status ?? {})}</p>
+            <p>
+              Solicitudes por estado: {JSON.stringify(metricsOverviewQuery.data?.data.requests_by_status ?? {})}
+            </p>
+            <p>Notificaciones totales: {metricsOverviewQuery.data?.data.total_notifications ?? 0}</p>
+            <p>Notificaciones no leidas: {metricsOverviewQuery.data?.data.unread_notifications ?? 0}</p>
+            <p>Eventos de auditoria: {metricsOverviewQuery.data?.data.total_audit_events ?? 0}</p>
+            <p>
+              Ultimo scheduler: {metricsOverviewQuery.data?.data.last_scheduler_run?.status ?? "sin ejecuciones"}
+              {metricsOverviewQuery.data?.data.last_scheduler_run
+                ? ` (${metricsOverviewQuery.data.data.last_scheduler_run.processed_count} procesados)`
+                : ""}
+            </p>
+            <p>Ventana activa: {metricsOverviewQuery.data?.data.latency_window_seconds ?? latencyWindowSeconds}s</p>
+            <div>
+              <p className="section-title">Latencia por endpoint (ms)</p>
+              <ul className="latency-list">
+                {(metricsOverviewQuery.data?.data.endpoint_latency_ms ?? []).map((item) => (
+                  <li key={`${item.method}-${item.path}-${item.status_code}`}>
+                    {item.method} {item.path} [{item.status_code}] - avg {item.avg_ms}, p95 {item.p95_ms}, max {item.max_ms} ({item.count} req)
+                  </li>
+                ))}
+                {(metricsOverviewQuery.data?.data.endpoint_latency_ms ?? []).length === 0 && (
+                  <li>Sin datos de latencia aun.</li>
+                )}
+              </ul>
+            </div>
+          </div>
 
           <form className="form-grid" onSubmit={handleProfileSubmit}>
             <label>
