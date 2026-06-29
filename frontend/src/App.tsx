@@ -21,6 +21,15 @@ import {
   useFinalizeTripMutation,
 } from "./features/trips/useTripMutations";
 import { useMyActiveTripQuery, useTripsBoardQuery } from "./features/trips/useTripsQueries";
+import {
+  BOARD_DIRECTION_OPTIONS,
+  CANCELLABLE_REQUEST_STATUSES,
+  REQUEST_STATUS,
+  TRIP_DIRECTION_OPTIONS,
+  type BoardDirectionValue,
+  type TripDirectionValue,
+  TRIP_STATUS,
+} from "./shared/constants/trips";
 import { API_BASE_URL } from "./shared/api/config";
 import { ApiRequestError } from "./shared/api/types";
 
@@ -38,7 +47,8 @@ function App() {
   const acceptTripRequestMutation = useAcceptTripRequestMutation();
   const rejectTripRequestMutation = useRejectTripRequestMutation();
   const cancelTripRequestMutation = useCancelTripRequestMutation();
-  const tripsBoardQuery = useTripsBoardQuery();
+  const [boardDirection, setBoardDirection] = useState<BoardDirectionValue>("all");
+  const tripsBoardQuery = useTripsBoardQuery(boardDirection === "all" ? undefined : boardDirection);
   const myActiveTripQuery = useMyActiveTripQuery();
   const tripRequestsQuery = useTripRequestsQuery(myActiveTripQuery.data?.data?.id);
   const myRequestsQuery = useMyRequestsQuery();
@@ -51,13 +61,15 @@ function App() {
   const [vehicleReference, setVehicleReference] = useState("");
   const [vehicleColor, setVehicleColor] = useState("");
   const [vehiclePlate, setVehiclePlate] = useState("");
-  const [tripDirection, setTripDirection] = useState("to_cali");
+  const [tripDirection, setTripDirection] = useState<TripDirectionValue>(TRIP_DIRECTION_OPTIONS[0].value);
   const [tripOriginLabel, setTripOriginLabel] = useState("Unidad La Arboleda");
   const [tripDepartureAt, setTripDepartureAt] = useState("");
   const [tripTotalSeats, setTripTotalSeats] = useState(4);
+  const [selectedBoardTripId, setSelectedBoardTripId] = useState<number | null>(null);
   const [requestPickupLabel, setRequestPickupLabel] = useState("Porteria principal");
   const [requestRequestedSeats, setRequestRequestedSeats] = useState(1);
   const [requestComment, setRequestComment] = useState("Voy con maleta");
+  const [autoCancelledByAcceptIds, setAutoCancelledByAcceptIds] = useState<number[]>([]);
   const [actionFeedback, setActionFeedback] = useState<string>("");
 
   useEffect(() => {
@@ -72,6 +84,9 @@ function App() {
 
   const healthStatus = isLoading ? "loading" : isError ? "error" : "ok";
   const requestId = data?.requestId ?? (error instanceof ApiRequestError ? error.requestId : "-") ?? "-";
+  const tripRequests = tripRequestsQuery.data?.data.items ?? [];
+  const myRequests = myRequestsQuery.data?.data.items ?? [];
+  const boardTrips = tripsBoardQuery.data?.data.items ?? [];
 
   let healthMessage = "Validando conexion con la API...";
   if (!isLoading && data) {
@@ -215,12 +230,11 @@ function App() {
     }
   };
 
-  const handleCreateRequestOnActiveTrip = async (event: FormEvent<HTMLFormElement>) => {
+  const handleCreateRequestOnBoardTrip = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    const activeTrip = myActiveTripQuery.data?.data;
-    if (!activeTrip) {
-      setActionFeedback("No hay viaje activo para crear solicitud de prueba.");
+    if (!selectedBoardTripId) {
+      setActionFeedback("Selecciona un viaje del board para solicitar cupos.");
       return;
     }
 
@@ -228,7 +242,7 @@ function App() {
 
     try {
       await createTripRequestMutation.mutateAsync({
-        tripId: activeTrip.id,
+        tripId: selectedBoardTripId,
         payload: {
           pickup_label: requestPickupLabel,
           requested_seats: requestRequestedSeats,
@@ -236,6 +250,7 @@ function App() {
         },
       });
       setActionFeedback("Solicitud creada correctamente.");
+      setSelectedBoardTripId(null);
     } catch (mutationError) {
       if (mutationError instanceof ApiRequestError) {
         setActionFeedback(`${mutationError.code}: ${mutationError.message}`);
@@ -245,11 +260,55 @@ function App() {
     }
   };
 
+  const handleSelectTripForRequest = (tripId: number) => {
+    setSelectedBoardTripId((current) => (current === tripId ? null : tripId));
+    setActionFeedback("");
+  };
+
+  const handleBoardDirectionChange = (value: string) => {
+    const selectedOption = BOARD_DIRECTION_OPTIONS.find((option) => option.value === value);
+    if (selectedOption) {
+      setBoardDirection(selectedOption.value);
+      setSelectedBoardTripId(null);
+    }
+  };
+
+  const handleTripDirectionChange = (value: string) => {
+    const selectedOption = TRIP_DIRECTION_OPTIONS.find((option) => option.value === value);
+    if (selectedOption) {
+      setTripDirection(selectedOption.value);
+    }
+  };
+
   const handleAcceptRequest = async (requestId: number) => {
     setActionFeedback("");
+
+    const acceptedRequest = tripRequests.find((item) => item.id === requestId);
+    const requesterUserId = acceptedRequest?.requester.user_id;
+    const autoCancelledIds =
+      requesterUserId === undefined
+        ? []
+        : myRequests
+            .filter(
+              (item) =>
+                item.id !== requestId &&
+                item.requester.user_id === requesterUserId &&
+                item.status === REQUEST_STATUS.PENDING,
+            )
+            .map((item) => item.id);
+
     try {
       await acceptTripRequestMutation.mutateAsync(requestId);
-      setActionFeedback("Solicitud aceptada.");
+      if (autoCancelledIds.length > 0) {
+        setAutoCancelledByAcceptIds((current) =>
+          Array.from(new Set([...current, ...autoCancelledIds])),
+        );
+        setActionFeedback(
+          `Solicitud aceptada. ${autoCancelledIds.length} solicitud(es) pendiente(s) del mismo solicitante se cancelaron automaticamente.`,
+        );
+      } else {
+        setActionFeedback("Solicitud aceptada.");
+      }
     } catch (mutationError) {
       if (mutationError instanceof ApiRequestError) {
         setActionFeedback(`${mutationError.code}: ${mutationError.message}`);
@@ -277,6 +336,7 @@ function App() {
     setActionFeedback("");
     try {
       await cancelTripRequestMutation.mutateAsync(requestId);
+      setAutoCancelledByAcceptIds((current) => current.filter((item) => item !== requestId));
       setActionFeedback("Solicitud cancelada.");
     } catch (mutationError) {
       if (mutationError instanceof ApiRequestError) {
@@ -286,9 +346,6 @@ function App() {
       setActionFeedback("No fue posible cancelar la solicitud.");
     }
   };
-
-  const tripRequests = tripRequestsQuery.data?.data.items ?? [];
-  const myRequests = myRequestsQuery.data?.data.items ?? [];
 
   return (
     <main className="app-shell">
@@ -384,9 +441,12 @@ function App() {
           <form className="form-grid" onSubmit={handleCreateTrip}>
             <label>
               Direccion
-              <select value={tripDirection} onChange={(event) => setTripDirection(event.target.value)}>
-                <option value="to_cali">Hacia Cali</option>
-                <option value="to_jamundi">Hacia Jamundi</option>
+              <select value={tripDirection} onChange={(event) => handleTripDirectionChange(event.target.value)}>
+                {TRIP_DIRECTION_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
             </label>
             <label>
@@ -441,6 +501,87 @@ function App() {
           </div>
 
           <div className="requests-panel">
+            <p className="section-title">Board de viajes (lado solicitante)</p>
+            <label className="board-filter">
+              Trayecto
+              <select value={boardDirection} onChange={(event) => handleBoardDirectionChange(event.target.value)}>
+                {BOARD_DIRECTION_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <ul className="request-list">
+              {boardTrips.length === 0 && <li>No hay viajes activos en el board.</li>}
+              {boardTrips.map((trip) => {
+                const isOwnTrip = trip.driver.user_id === profileQuery.data?.data.user_id;
+                const isNotAvailable = trip.status !== TRIP_STATUS.ACTIVE || trip.available_seats <= 0;
+                const isDisabled = isOwnTrip || isNotAvailable;
+                return (
+                  <li key={trip.id}>
+                    <div>
+                      <strong>
+                        Viaje #{trip.id} - {trip.driver.display_name}
+                      </strong>
+                      <p>
+                        {trip.origin_label} | salida {new Date(trip.departure_at).toLocaleString()} | estado {trip.status}
+                      </p>
+                      <p>
+                        Cupos disponibles: {trip.available_seats} / {trip.total_seats}
+                      </p>
+                      {isOwnTrip && <p className="request-id">No puedes solicitar cupos en tu propio viaje.</p>}
+                      {!isOwnTrip && isNotAvailable && <p className="request-id">Este viaje no acepta nuevas solicitudes.</p>}
+                    </div>
+
+                    <div className="inline-actions">
+                      <button
+                        type="button"
+                        disabled={isDisabled}
+                        onClick={() => handleSelectTripForRequest(trip.id)}
+                      >
+                        {selectedBoardTripId === trip.id ? "Ocultar formulario" : "Solicitar cupo"}
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+
+            {selectedBoardTripId && (
+              <form className="form-grid" onSubmit={handleCreateRequestOnBoardTrip}>
+                <p className="section-title">Crear solicitud para viaje #{selectedBoardTripId}</p>
+                <label>
+                  Punto de recogida
+                  <input
+                    value={requestPickupLabel}
+                    onChange={(event) => setRequestPickupLabel(event.target.value)}
+                    required
+                  />
+                </label>
+                <label>
+                  Cupos solicitados
+                  <input
+                    type="number"
+                    min={1}
+                    max={12}
+                    value={requestRequestedSeats}
+                    onChange={(event) => setRequestRequestedSeats(Number(event.target.value))}
+                    required
+                  />
+                </label>
+                <label>
+                  Comentario
+                  <input value={requestComment} onChange={(event) => setRequestComment(event.target.value)} />
+                </label>
+                <button type="submit" disabled={createTripRequestMutation.isPending}>
+                  Crear solicitud
+                </button>
+              </form>
+            )}
+          </div>
+
+          <div className="requests-panel">
             <p className="section-title">Solicitudes de mi viaje activo</p>
             {!myActiveTrip && <p className="request-id">Activa un viaje para gestionar solicitudes.</p>}
 
@@ -460,14 +601,14 @@ function App() {
                     <div className="inline-actions">
                       <button
                         type="button"
-                        disabled={item.status !== "pendiente" || acceptTripRequestMutation.isPending}
+                        disabled={item.status !== REQUEST_STATUS.PENDING || acceptTripRequestMutation.isPending}
                         onClick={() => void handleAcceptRequest(item.id)}
                       >
                         Aceptar
                       </button>
                       <button
                         type="button"
-                        disabled={item.status !== "pendiente" || rejectTripRequestMutation.isPending}
+                        disabled={item.status !== REQUEST_STATUS.PENDING || rejectTripRequestMutation.isPending}
                         onClick={() => void handleRejectRequest(item.id)}
                       >
                         Rechazar
@@ -478,36 +619,6 @@ function App() {
               </ul>
             )}
           </div>
-
-          <form className="form-grid" onSubmit={handleCreateRequestOnActiveTrip}>
-            <p className="section-title">Simular solicitud (lado solicitante)</p>
-            <label>
-              Punto de recogida
-              <input
-                value={requestPickupLabel}
-                onChange={(event) => setRequestPickupLabel(event.target.value)}
-                required
-              />
-            </label>
-            <label>
-              Cupos solicitados
-              <input
-                type="number"
-                min={1}
-                max={12}
-                value={requestRequestedSeats}
-                onChange={(event) => setRequestRequestedSeats(Number(event.target.value))}
-                required
-              />
-            </label>
-            <label>
-              Comentario
-              <input value={requestComment} onChange={(event) => setRequestComment(event.target.value)} />
-            </label>
-            <button type="submit" disabled={createTripRequestMutation.isPending || !myActiveTrip}>
-              Crear solicitud en viaje activo
-            </button>
-          </form>
 
           <div className="requests-panel">
             <p className="section-title">Mis solicitudes (simulacion solicitante)</p>
@@ -520,11 +631,19 @@ function App() {
                     <p>
                       {item.requested_seats} cupo(s) - {item.pickup_label} - estado: {item.status}
                     </p>
+                    {item.status === REQUEST_STATUS.CANCELLED && autoCancelledByAcceptIds.includes(item.id) && (
+                      <p className="auto-cancel-note">
+                        Cancelada automaticamente al aceptar otra solicitud del mismo solicitante
+                        {item.decided_at ? ` (${new Date(item.decided_at).toLocaleString()})` : ""}.
+                      </p>
+                    )}
                   </div>
                   <button
                     type="button"
                     disabled={
-                      !["pendiente", "aceptada"].includes(item.status) || cancelTripRequestMutation.isPending
+                      !CANCELLABLE_REQUEST_STATUSES.includes(
+                        item.status as (typeof CANCELLABLE_REQUEST_STATUSES)[number],
+                      ) || cancelTripRequestMutation.isPending
                     }
                     onClick={() => void handleCancelOwnRequest(item.id)}
                   >
